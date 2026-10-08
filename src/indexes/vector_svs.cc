@@ -41,6 +41,7 @@
 
 #include "absl/strings/str_cat.h"
 #include "src/index_schema.pb.h"
+#include "src/metrics.h"
 #include "vmsdk/src/utils.h"
 #endif
 
@@ -322,7 +323,7 @@ absl::Status CheckFiniteVector(const T* src, size_t n_elements) {
 // and huge-page-aware allocator, and returns the built handle. The
 // SVS C API requires num_vectors > 0 for svs_index_build_dynamic; the
 // first-add path passes the vector supplied by the ingest call.
-absl::StatusOr<svs_index_h> BootstrapIndex(
+absl::StatusOr<svs_index_h> BootstrapIndexImpl(
     const SVSBuildConfig& config, data_model::DistanceMetric distance_metric,
     int dimensions, uint64_t label, const float* fp32_vector) {
   auto metric = ToSvsDistanceMetric(distance_metric);
@@ -389,6 +390,18 @@ absl::StatusOr<svs_index_h> BootstrapIndex(
     return SvsErrorToStatus(err.get(), "index_build_dynamic");
   }
   return index;
+}
+
+// Counts every failure once in svs_create_exceptions_cnt (INFO).
+absl::StatusOr<svs_index_h> BootstrapIndex(
+    const SVSBuildConfig& config, data_model::DistanceMetric distance_metric,
+    int dimensions, uint64_t label, const float* fp32_vector) {
+  auto result = BootstrapIndexImpl(config, distance_metric, dimensions, label,
+                                   fp32_vector);
+  if (!result.ok()) {
+    ++Metrics::GetStats().svs_create_exceptions_cnt;
+  }
+  return result;
 }
 
 }  // namespace
